@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - Presensi Guru</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.min.js"></script>
+  <style>
+    @media print {
+      body * { visibility: hidden; }
+      #printArea, #printArea * { visibility: visible; }
+      #printArea { position: absolute; left: 0; top: 0; width: 100%; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+
+  <div class="max-w-6xl mx-auto py-8 px-4">
+    <header class="mb-8 border-b pb-4 flex justify-between items-center">
+      <div>
+        <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Portal Administrasi Presensi</h1>
+        <p class="text-sm text-slate-500">Pendaftaran Guru, Perekaman Wajah & Laporan Log</p>
+      </div>
+      <div id="modelStatus" class="px-3 py-1 bg-amber-100 text-amber-800 text-xs font-semibold rounded-full">
+        Memuat Model AI...
+      </div>
+    </header>
+
+    <!-- Navigasi Tab -->
+    <div class="flex space-x-2 border-b border-slate-200 mb-6">
+      <button onclick="switchTab('tab-register')" id="btn-tab-register" class="tab-btn px-4 py-2 font-medium border-b-2 border-indigo-600 text-indigo-600">Registrasi Guru</button>
+      <button onclick="switchTab('tab-face')" id="btn-tab-face" class="tab-btn px-4 py-2 font-medium text-slate-500 hover:text-slate-700">Enrollment Wajah</button>
+      <button onclick="switchTab('tab-logs')" id="btn-tab-logs" class="tab-btn px-4 py-2 font-medium text-slate-500 hover:text-slate-700">Rekap Presensi</button>
+    </div>
+
+    <!-- TAB 1: REGISTRASI GURU -->
+    <section id="tab-register" class="tab-content grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <h2 class="text-lg font-bold mb-4">Input Data Guru</h2>
+        <form id="formRegister" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium mb-1">NIP / Kode Identitas</label>
+            <input type="text" id="regNip" required class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Nama Lengkap</label>
+            <input type="text" id="regNama" required class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">Jabatan</label>
+            <input type="text" id="regJabatan" required class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+          </div>
+          <button type="submit" id="btnSubmitReg" class="w-full bg-indigo-600 text-white font-medium py-2 rounded-lg hover:bg-indigo-700 transition">
+            Simpan & Buat Kartu QR
+          </button>
+        </form>
+      </div>
+
+      <!-- Preview Kartu QR Fisik -->
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col items-center justify-center">
+        <div id="printArea" class="border border-slate-300 p-6 rounded-xl w-64 text-center bg-slate-50 shadow-sm hidden">
+          <p class="text-xs uppercase tracking-wider text-slate-400 font-bold mb-1">Kartu Presensi Guru</p>
+          <div id="qrcodeCanvas" class="flex justify-center my-3"></div>
+          <h3 id="cardNama" class="font-bold text-slate-800 text-base">Nama Guru</h3>
+          <p id="cardNip" class="text-xs text-slate-500">NIP: -</p>
+          <p id="cardJabatan" class="text-xs text-slate-500">Jabatan: -</p>
+        </div>
+        <div id="emptyQrPlaceholder" class="text-slate-400 text-center text-sm py-12">
+          QR Code siap cetak akan muncul di sini setelah formulir berhasil disimpan.
+        </div>
+        <button id="btnPrintCard" onclick="window.print()" class="mt-4 px-4 py-2 bg-slate-800 text-white text-sm rounded-lg hover:bg-slate-900 hidden">
+          Cetak ID Card
+        </button>
+      </div>
+    </section>
+
+    <!-- TAB 2: ENROLLMENT WAJAH -->
+    <section id="tab-face" class="tab-content hidden grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4">
+        <h2 class="text-lg font-bold">Pilih Guru & Rekam Wajah</h2>
+        <div>
+          <label class="block text-sm font-medium mb-1">Pilih Guru Terdaftar</label>
+          <select id="selectTeacher" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+            <option value="">-- Muat data guru... --</option>
+          </select>
+        </div>
+        <div class="flex space-x-2">
+          <button id="btnStartCamera" onclick="startEnrollmentCamera()" class="flex-1 bg-emerald-600 text-white py-2 rounded-lg hover:bg-emerald-700 text-sm font-medium">
+            Nyalakan Kamera
+          </button>
+          <button id="btnCaptureFace" onclick="captureAndEnrollFace()" disabled class="flex-1 bg-indigo-600 disabled:bg-slate-300 text-white py-2 rounded-lg hover:bg-indigo-700 text-sm font-medium">
+            Ekstrak & Simpan
+          </button>
+        </div>
+        <div id="enrollFeedback" class="text-sm p-3 rounded-lg bg-slate-50 text-slate-600">
+          Arahkan wajah lurus ke webcam dengan pencahayaan optimal. Pastikan hanya ada satu wajah dalam frame.
+        </div>
+      </div>
+
+      <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col items-center justify-center">
+        <div class="relative w-[360px] h-[270px] bg-slate-950 rounded-lg overflow-hidden flex items-center justify-center">
+          <video id="enrollVideo" autoplay muted playsinline class="w-full h-full object-cover"></video>
+          <canvas id="enrollCanvas" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: REKAP PRESENSI -->
+    <section id="tab-logs" class="tab-content hidden bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+      <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+        <h2 class="text-lg font-bold">Log Presensi Harian</h2>
+        <div class="flex items-center space-x-2">
+          <input type="date" id="filterDate" class="border px-3 py-1.5 rounded-lg text-sm">
+          <button onclick="fetchAttendanceLogs()" class="bg-indigo-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-indigo-700 font-medium">
+            Filter Log
+          </button>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-slate-50 text-slate-600 border-b">
+            <tr>
+              <th class="py-2.5 px-3">Tanggal</th>
+              <th class="py-2.5 px-3">Jam</th>
+              <th class="py-2.5 px-3">NIP</th>
+              <th class="py-2.5 px-3">Nama</th>
+              <th class="py-2.5 px-3">Tipe</th>
+              <th class="py-2.5 px-3">Metode</th>
+              <th class="py-2.5 px-3">Status</th>
+            </tr>
+          </thead>
+          <tbody id="logTableBody" class="divide-y divide-slate-100">
+            <tr><td colspan="7" class="py-6 text-center text-slate-400">Pilih tanggal dan klik filter untuk melihat riwayat.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // TEMPELKAN URL DARI APPS SCRIPT ANDA DI SINI
+    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbyDvGQeYdA9cp7IVFpar6kgcg0zb-5PV34u43Q8arqrQQImv-XVS7TO7iQqGK8KKsdR/exec";
+    const MODELS_URL = "https://cdn.jsdelivr.net/gh/MAHER1997-C/face-models@main/models";
+
+    let modelsLoaded = false;
+    let enrollStream = null;
+
+    window.addEventListener('DOMContentLoaded', async () => {
+      document.getElementById('filterDate').value = new Date().toISOString().split('T')[0];
+      await loadFaceModels();
+      await populateTeachersDropdown();
+    });
+
+    async function loadFaceModels() {
+      try {
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri(MODELS_URL),
+          faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODELS_URL),
+          faceapi.nets.faceRecognitionNet.loadFromUri(MODELS_URL)
+        ]);
+        modelsLoaded = true;
+        const el = document.getElementById('modelStatus');
+        el.className = "px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-semibold rounded-full";
+        el.innerText = "Model AI Siap";
+      } catch (err) {
+        console.error(err);
+        const el = document.getElementById('modelStatus');
+        el.className = "px-3 py-1 bg-rose-100 text-rose-800 text-xs font-semibold rounded-full";
+        el.innerText = "Gagal Memuat Model";
+      }
+    }
+
+    async function postGAS(payload) {
+      const response = await fetch(GAS_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+      });
+      return await response.json();
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.tab-btn').forEach(el => {
+        el.classList.remove('border-b-2', 'border-indigo-600', 'text-indigo-600');
+        el.classList.add('text-slate-500');
+      });
+
+      document.getElementById(tabId).classList.remove('hidden');
+      const activeBtn = document.getElementById('btn-' + tabId);
+      activeBtn.classList.add('border-b-2', 'border-indigo-600', 'text-indigo-600');
+      activeBtn.classList.remove('text-slate-500');
+
+      if (tabId === 'tab-face') {
+        populateTeachersDropdown();
+      } else if (tabId === 'tab-logs') {
+        fetchAttendanceLogs();
+      }
+    }
+
+    document.getElementById('formRegister').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('btnSubmitReg');
+      btn.disabled = true;
+      btn.innerText = "Mendaftarkan...";
+
+      const data = {
+        nip: document.getElementById('regNip').value.trim(),
+        nama: document.getElementById('regNama').value.trim(),
+        jabatan: document.getElementById('regJabatan').value.trim()
+      };
+
+      try {
+        const res = await postGAS({ action: 'registerGuru', data: data });
+        if (res.success) {
+          document.getElementById('emptyQrPlaceholder').classList.add('hidden');
+          const printArea = document.getElementById('printArea');
+          printArea.classList.remove('hidden');
+          document.getElementById('btnPrintCard').classList.remove('hidden');
+
+          document.getElementById('cardNama').innerText = data.nama;
+          document.getElementById('cardNip').innerText = "NIP: " + data.nip;
+          document.getElementById('cardJabatan').innerText = "Jabatan: " + data.jabatan;
+
+          const qrCanvas = document.getElementById('qrcodeCanvas');
+          qrCanvas.innerHTML = '';
+          new QRCode(qrCanvas, {
+            text: res.data.qrCode,
+            width: 140,
+            height: 140,
+            correctLevel: QRCode.CorrectLevel.M
+          });
+
+          document.getElementById('formRegister').reset();
+          alert("Pendaftaran berhasil.");
+        } else {
+          alert("Gagal: " + res.message);
+        }
+      } catch (err) {
+        alert("Terjadi kesalahan jaringan: " + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerText = "Simpan & Buat Kartu QR";
+      }
+    });
+
+    async function populateTeachersDropdown() {
+      const select = document.getElementById('selectTeacher');
+      try {
+        const res = await fetch(`${GAS_API_URL}?action=getTeachers`);
+        const json = await res.json();
+        if (json.success) {
+          select.innerHTML = '<option value="">-- Pilih Guru --</option>';
+          json.data.forEach(t => {
+            const hasFace = t.faceDescriptor ? '✓ [Wajah Terdaftar]' : '✗ [Belum Terdaftar]';
+            select.innerHTML += `<option value="${t.nip}">${t.nama} (${t.nip}) - ${hasFace}</option>`;
+          });
+        }
+      } catch (err) {
+        select.innerHTML = '<option value="">Gagal mengambil daftar guru</option>';
+      }
+    }
+
+    async function startEnrollmentCamera() {
+      const video = document.getElementById('enrollVideo');
+      try {
+        enrollStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 640, height: 480, facingMode: "user" }
+        });
+        video.srcObject = enrollStream;
+        document.getElementById('btnCaptureFace').disabled = false;
+        document.getElementById('enrollFeedback').innerText = "Kamera aktif. Pastikan posisi wajah tegak.";
+      } catch (err) {
+        alert("Akses kamera ditolak atau tidak tersedia: " + err.message);
+      }
+    }
+
+    async function captureAndEnrollFace() {
+      const nip = document.getElementById('selectTeacher').value;
+      const feedback = document.getElementById('enrollFeedback');
+
+      if (!nip) {
+        alert("Pilih guru terlebih dahulu.");
+        return;
+      }
+      if (!modelsLoaded) {
+        alert("Model deteksi wajah belum selesai dimuat.");
+        return;
+      }
+
+      feedback.innerText = "Mendeteksi dan mengekstrak geometri wajah...";
+      const video = document.getElementById('enrollVideo');
+
+      const detection = await faceapi.detectSingleFace(
+        video,
+        new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 })
+      ).withFaceLandmarks(true).withFaceDescriptor();
+
+      if (!detection) {
+        feedback.innerText = "Wajah tidak terdeteksi. Posisikan wajah tepat di depan kamera.";
+        return;
+      }
+
+      const descriptorArray = Array.from(detection.descriptor);
+
+      feedback.innerText = "Mengirimkan vektor deskriptor ke server...";
+      const btn = document.getElementById('btnCaptureFace');
+      btn.disabled = true;
+
+      try {
+        const res = await postGAS({
+          action: 'saveFace',
+          data: { nip: nip, descriptor: descriptorArray }
+        });
+
+        if (res.success) {
+          feedback.innerText = "Sukses! Wajah guru berhasil didaftarkan.";
+          alert("Perekaman wajah berhasil disimpan ke Google Sheets.");
+          await populateTeachersDropdown();
+        } else {
+          feedback.innerText = "Gagal: " + res.message;
+        }
+      } catch (err) {
+        feedback.innerText = "Kesalahan koneksi: " + err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function fetchAttendanceLogs() {
+      const date = document.getElementById('filterDate').value;
+      const tbody = document.getElementById('logTableBody');
+      tbody.innerHTML = '<tr><td colspan="7" class="py-4 text-center text-slate-400">Mengambil data...</td></tr>';
+
+      try {
+        const res = await fetch(`${GAS_API_URL}?action=getReports&date=${date}`);
+        const json = await res.json();
+
+        if (json.success && json.data.length > 0) {
+          tbody.innerHTML = json.data.map(log => `
+            <tr class="hover:bg-slate-50 transition">
+              <td class="py-2.5 px-3">${log.tanggal}</td>
+              <td class="py-2.5 px-3 font-semibold">${log.jam}</td>
+              <td class="py-2.5 px-3 font-mono text-xs">${log.nip}</td>
+              <td class="py-2.5 px-3">${log.nama}</td>
+              <td class="py-2.5 px-3"><span class="px-2 py-0.5 rounded text-xs font-semibold ${log.tipe === 'Masuk' ? 'bg-sky-100 text-sky-800' : 'bg-emerald-100 text-emerald-800'}">${log.tipe}</span></td>
+              <td class="py-2.5 px-3"><span class="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded">${log.metode}</span></td>
+              <td class="py-2.5 px-3"><span class="text-xs font-semibold ${log.status === 'Terlambat' ? 'text-rose-600' : 'text-emerald-600'}">${log.status}</span></td>
+            </tr>
+          `).join('');
+        } else {
+          tbody.innerHTML = '<tr><td colspan="7" class="py-6 text-center text-slate-400">Tidak ada log presensi pada tanggal ini.</td></tr>';
+        }
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="7" class="py-4 text-center text-rose-500">Gagal mengambil data log.</td></tr>';
+      }
+    }
+  </script>
+</body>
+</html>
